@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:mollysou/services/cooldown_manager.dart';
 import 'package:mollysou/services/cooldown_service.dart';
+import 'package:mollysou/services/points_service.dart';
 import 'package:mollysou/services/user_service.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class VideoAdScreen extends StatefulWidget {
+  final VoidCallback? onPointsEarned;
+
+  const VideoAdScreen({Key? key, this.onPointsEarned}) : super(key: key);
+
   @override
   _VideoAdScreenState createState() => _VideoAdScreenState();
 }
@@ -20,6 +25,15 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
   Duration _timeRemaining = Duration.zero;
   bool _showCooldownScreen = false;
 
+  Map<String, dynamic> userData = {
+    "level": 1,
+    "points": 0,
+    "xpActuel": 0,
+    "xpProchainNiveau": 1000,
+    "rank": "BRONZE",
+    "nomComplet": "Utilisateur",
+  };
+
   @override
   void initState() {
     super.initState();
@@ -28,6 +42,21 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+
+    final userResult = await UserService.getCurrentUser();
+    if (userResult['success'] == true) {
+      setState(() {
+        final currentUser = userResult['user'];
+        userData = {
+          "level": currentUser?['niveau'] ?? 1,
+          "points": currentUser?['points'] ?? 0,
+          "xpActuel": currentUser?['xpActuel'] ?? 0,
+          "xpProchainNiveau": currentUser?['xpProchainNiveau'] ?? 1000,
+          "rank": currentUser?['rank'] ?? "BRONZE",
+          "nomComplet": currentUser?['nomComplet'] ?? "Utilisateur",
+        };
+      });
+    }
 
     // Charger le dernier temps de visionnage
     final lastWatchMillis = prefs.getInt('lastWatchTime');
@@ -122,7 +151,6 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
     }
   }
 
-// Update the _saveWatchTime method in VideoAdScreen
   Future<void> _saveWatchTime() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('lastWatchTime', DateTime.now().millisecondsSinceEpoch);
@@ -130,16 +158,53 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
     // Set cooldown to 3 hours
     final newCooldown = Duration(hours: 3);
 
-    // Update cooldown in API if user is logged in
+    // Update points in database (100 points for watching ad)
     final userResult = await UserService.getCurrentUser();
     if (userResult['success'] == true) {
       final userId = userResult['userId'];
+
+      // Update points
+      try {
+        final pointsResult = await PointsService.addPoints(userId, 100);
+        if (pointsResult['success'] == true) {
+          print('Successfully added 100 points from video ad');
+
+          if (widget.onPointsEarned != null) {
+            widget.onPointsEarned!();
+          }
+          // Show level up message if applicable
+          final newUserData = pointsResult['user'];
+          final oldLevel = userData['level'] ?? 1;
+          final newLevel = newUserData['niveau'] ?? 1;
+
+          if (newLevel > oldLevel) {
+            _showLevelUpDialog(newLevel);
+          }
+
+          // Update local user data
+          setState(() {
+            userData = {
+              "level": newUserData['niveau'] ?? 1,
+              "points": newUserData['points'] ?? 0,
+              "xpActuel": newUserData['xpActuel'] ?? 0,
+              "xpProchainNiveau": newUserData['xpProchainNiveau'] ?? 1000,
+              "rank": newUserData['rank'] ?? "BRONZE",
+              "nomComplet": newUserData['nomComplet'] ?? "Utilisateur",
+            };
+          });
+        } else {
+          print('Failed to update points: ${pointsResult['error']}');
+        }
+      } catch (e) {
+        print('Error updating points: $e');
+      }
+
+      // Update cooldown
       try {
         await CooldownService.updateCooldown(userId, 'video');
         print('Video cooldown updated in API');
       } catch (e) {
         print('Error updating cooldown in API: $e');
-        // Fallback to local storage
         await CooldownManager().saveLocalCooldown('Watch', newCooldown);
       }
     } else {
@@ -148,6 +213,87 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
 
     // Notify cooldown manager
     CooldownManager().updateVideoCooldown(newCooldown);
+  }
+
+  void _showLevelUpDialog(int newLevel) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.emoji_events, color: Colors.white, size: 40),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Niveau Atteint !',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Félicitations !',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 18,
+              ),
+            ),
+            SizedBox(height: 8),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Color(0xFFFFD700).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFFFFD700)),
+              ),
+              child: Text(
+                'Niveau $newLevel',
+                style: TextStyle(
+                  color: Color(0xFFFFD700),
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF6A11CB),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Super !',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showRewardDialog() {

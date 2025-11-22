@@ -1,3 +1,4 @@
+// Update PaymentScreen.dart
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,8 +7,12 @@ import 'QrCodeScreen.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double totalAmount;
+  final List<dynamic> cartItems; // Add this parameter
 
-  PaymentScreen({required this.totalAmount});
+  PaymentScreen({
+    required this.totalAmount,
+    required this.cartItems, // Add this parameter
+  });
 
   @override
   _PaymentScreenState createState() => _PaymentScreenState();
@@ -64,6 +69,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
           children: [
             // Résumé de commande
             _buildOrderSummary(),
+            SizedBox(height: 30),
+
+            // Détails des articles
+            _buildCartItems(),
             SizedBox(height: 30),
 
             // Formulaire de paiement
@@ -137,6 +146,101 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCartItems() {
+    return Card(
+      color: _cardColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Articles dans votre panier',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: _textColor,
+              ),
+            ),
+            SizedBox(height: 12),
+            ...widget.cartItems.map((item) => _buildCartItem(item)).toList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCartItem(Map<String, dynamic> item) {
+    final price = double.parse(item['price'].toString());
+    final quantity = item['quantity'] ?? 1;
+    final total = price * quantity;
+
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          // Image du produit
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _isDarkMode ? Color(0xFF0F3460) : Colors.grey[200],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: item['productImage'] != null
+                  ? Image.network(
+                item['productImage'],
+                width: 30,
+                height: 30,
+                fit: BoxFit.cover,
+              )
+                  : Icon(Icons.shopping_bag, size: 20, color: _secondaryTextColor),
+            ),
+          ),
+          SizedBox(width: 12),
+
+          // Détails du produit
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['productName'] ?? 'Produit sans nom',
+                  style: TextStyle(
+                    color: _textColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                SizedBox(height: 2),
+                Text(
+                  '${price.toStringAsFixed(2)}€ × $quantity',
+                  style: TextStyle(
+                    color: _secondaryTextColor,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Prix total pour cet article
+          Text(
+            '${total.toStringAsFixed(2)}€',
+            style: TextStyle(
+              color: _textColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -308,6 +412,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         builder: (context) => QrCodeScreen(
           totalAmount: widget.totalAmount + 2.50,
           orderNumber: 'CMD-${DateTime.now().millisecondsSinceEpoch}',
+          cartItems: widget.cartItems, // Pass cart items to QR code screen
         ),
       ),
     );

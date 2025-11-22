@@ -108,4 +108,92 @@ public class UserService {
         dto.setLastVideoAd(user.getLastVideoAd());
         return dto;
     }
+
+    public UserDTO updateUserPointsAndXP(Long userId, Integer pointsToAdd, Integer xpToAdd) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // Update points
+        user.setPoints(user.getPoints() + pointsToAdd);
+
+        // Update XP and handle level up
+        int newXp = user.getXpActuel() + xpToAdd;
+        user.setXpActuel(newXp);
+
+        // Check for level up
+        while (user.getXpActuel() >= user.getXpProchainNiveau()) {
+            levelUpUser(user);
+        }
+
+        // Update rank based on level
+        updateUserRank(user);
+
+        user.setUpdatedAt(LocalDateTime.now());
+        User savedUser = userRepository.save(user);
+
+        return convertToDTO(savedUser);
+    }
+
+    private void levelUpUser(User user) {
+        int excessXp = user.getXpActuel() - user.getXpProchainNiveau();
+        user.setNiveau(user.getNiveau() + 1);
+        user.setXpActuel(excessXp);
+
+        // Calculate next level XP with a more reasonable progression
+        user.setXpProchainNiveau(calculateNextLevelXP(user.getNiveau()));
+    }
+
+    private int calculateNextLevelXP(int currentLevel) {
+        // Fixed XP requirements for balanced progression
+        if (currentLevel < 10) {
+            return 1000 + (currentLevel * 100);
+        } else if (currentLevel < 50) {
+            return 2000 + (currentLevel * 200);
+        } else if (currentLevel < 100) {
+            return 10000 + (currentLevel * 500);
+        } else if (currentLevel < 150) {
+            return 50000 + (currentLevel * 1000);
+        } else {
+            return 150000 + (currentLevel * 2000);
+        }
+    }
+
+    private void updateUserRank(User user) {
+        int level = user.getNiveau();
+
+        if (level >= 200) {
+            user.setRank("DIAMOND");
+        } else if (level >= 100) {
+            user.setRank("PLATINUM");
+        } else if (level >= 50) {
+            user.setRank("GOLD");
+        } else if (level >= 30) {
+            user.setRank("SILVER");
+        } else {
+            user.setRank("BRONZE");
+        }
+    }
+
+    public UserDTO addPoints(Long userId, Integer pointsToAdd) {
+        return updateUserPointsAndXP(userId, pointsToAdd, pointsToAdd); // XP equals points
+    }
+
+    public UserDTO addXP(Long userId, Integer xpToAdd) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        int newXp = user.getXpActuel() + xpToAdd;
+        user.setXpActuel(newXp);
+
+        while (user.getXpActuel() >= user.getXpProchainNiveau()) {
+            levelUpUser(user);
+        }
+
+        updateUserRank(user);
+
+        user.setUpdatedAt(LocalDateTime.now());
+        User savedUser = userRepository.save(user);
+
+        return convertToDTO(savedUser);
+    }
 }

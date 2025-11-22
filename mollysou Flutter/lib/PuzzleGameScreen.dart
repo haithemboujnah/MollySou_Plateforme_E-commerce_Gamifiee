@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:mollysou/services/cooldown_manager.dart';
+import 'package:mollysou/services/points_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'services/user_service.dart';
 import 'services/cooldown_service.dart';
 
 class PuzzleGameScreen extends StatefulWidget {
+  final VoidCallback? onPointsEarned;
+
+  const PuzzleGameScreen({Key? key, this.onPointsEarned}) : super(key: key);
+
   @override
   _PuzzleGameScreenState createState() => _PuzzleGameScreenState();
 }
@@ -40,6 +45,15 @@ class _PuzzleGameScreenState extends State<PuzzleGameScreen> {
     '💰', '💰',
   ];
 
+  Map<String, dynamic> userData = {
+    "level": 1,
+    "points": 0,
+    "xpActuel": 0,
+    "xpProchainNiveau": 1000,
+    "rank": "BRONZE",
+    "nomComplet": "Utilisateur",
+  };
+
   @override
   void initState() {
     super.initState();
@@ -52,11 +66,21 @@ class _PuzzleGameScreenState extends State<PuzzleGameScreen> {
       _isDarkMode = prefs.getBool('isDarkMode') ?? false;
     });
 
-    // Get user ID
+    // Get user ID and user data
     final userResult = await UserService.getCurrentUser();
     if (userResult['success'] == true) {
       setState(() {
         _userId = userResult['userId'];
+        // Update user data from API response
+        final currentUser = userResult['user'];
+        userData = {
+          "level": currentUser?['niveau'] ?? 1,
+          "points": currentUser?['points'] ?? 0,
+          "xpActuel": currentUser?['xpActuel'] ?? 0,
+          "xpProchainNiveau": currentUser?['xpProchainNiveau'] ?? 1000,
+          "rank": currentUser?['rank'] ?? "BRONZE",
+          "nomComplet": currentUser?['nomComplet'] ?? "Utilisateur",
+        };
       });
       await _loadCooldownsFromApi();
     } else {
@@ -280,7 +304,128 @@ class _PuzzleGameScreenState extends State<PuzzleGameScreen> {
       _points += 200; // Bonus de complétion
     });
 
+    // Update points in database
+    _updatePointsInDatabase();
     _updateCooldown();
+  }
+
+  Future<void> _updatePointsInDatabase() async {
+    if (_userId != null) {
+      try {
+        final result = await PointsService.addPoints(_userId!, _points);
+        if (result['success'] == true) {
+          print('Successfully added $_points points from puzzle game');
+
+          if (widget.onPointsEarned != null) {
+            widget.onPointsEarned!();
+          }
+
+          // Show level up message if applicable
+          final newUserData = result['user'];
+          final oldLevel = userData['level'] ?? 1;
+          final newLevel = newUserData['niveau'] ?? 1;
+
+          if (newLevel > oldLevel) {
+            _showLevelUpDialog(newLevel);
+          }
+        } else {
+          print('Failed to update points: ${result['error']}');
+        }
+      } catch (e) {
+        print('Error updating points: $e');
+      }
+    }
+  }
+
+// Add level up dialog method (similar to WheelGameScreen)
+  void _showLevelUpDialog(int newLevel) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: _cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.emoji_events, color: Colors.white, size: 40),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Niveau Atteint !',
+              style: TextStyle(
+                color: _textColor,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Félicitations !',
+              style: TextStyle(
+                color: _secondaryTextColor,
+                fontSize: 18,
+              ),
+            ),
+            SizedBox(height: 8),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Color(0xFFFFD700).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFFFFD700)),
+              ),
+              child: Text(
+                'Niveau $newLevel',
+                style: TextStyle(
+                  color: Color(0xFFFFD700),
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Continuez à jouer pour monter en rang !',
+              style: TextStyle(
+                color: _secondaryTextColor,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF6A11CB),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Super !',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _updateCooldown() async {

@@ -48,4 +48,44 @@ public class UserController {
         userService.updateUserCooldown(userId, type);
         return ResponseEntity.ok().build();
     }
+
+    @PostMapping("/{userId}/add-points")
+    public ResponseEntity<UserDTO> addPoints(
+            @PathVariable Long userId,
+            @RequestBody UpdatePointsDTO pointsDTO) {
+        try {
+            UserDTO updatedUser = userService.addPoints(userId, pointsDTO.getPoints());
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/{userId}/add-xp")
+    public ResponseEntity<UserDTO> addXP(
+            @PathVariable Long userId,
+            @RequestBody UpdatePointsDTO xpDTO) {
+        try {
+            UserDTO updatedUser = userService.addXP(userId, xpDTO.getXp());
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/{userId}/update-points-xp")
+    public ResponseEntity<UserDTO> updatePointsAndXP(
+            @PathVariable Long userId,
+            @RequestBody UpdatePointsDTO updateDTO) {
+        try {
+            UserDTO updatedUser = userService.updateUserPointsAndXP(
+                    userId,
+                    updateDTO.getPoints(),
+                    updateDTO.getXp()
+            );
+            return ResponseEntity.ok(updatedUser);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
 }

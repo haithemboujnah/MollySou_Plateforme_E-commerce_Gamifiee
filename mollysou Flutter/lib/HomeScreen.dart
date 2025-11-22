@@ -8,6 +8,7 @@ import 'dart:async';
 
 // Import services
 import 'ProductsByCategoryScreen.dart';
+import 'components/Sidebar.dart';
 import 'services/user_service.dart';
 import 'services/category_service.dart';
 import 'services/event_service.dart';
@@ -23,7 +24,7 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<dynamic> categories = [];
   List<dynamic> events = [];
   Map<String, dynamic>? currentUser;
@@ -51,9 +52,13 @@ class _HomeScreenState extends State<HomeScreen> {
   late StreamSubscription<Duration> _puzzleCooldownSubscription;
   late StreamSubscription<Duration> _videoCooldownSubscription;
 
+  bool _isSidebarOpen = false;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeApp();
     _setupCooldownListeners();
   }
@@ -125,6 +130,71 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       });
     }
+  }
+
+  void _toggleSidebar() {
+    setState(() {
+      _isSidebarOpen = !_isSidebarOpen;
+    });
+  }
+
+  // Add gesture detector for swipe
+  Widget _buildWithSidebar(Widget child) {
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        // Swiping from right to left to open sidebar
+        if (details.delta.dx < -10 && !_isSidebarOpen) {
+          _toggleSidebar();
+        }
+        // Swiping from left to right to close sidebar
+        if (details.delta.dx > 10 && _isSidebarOpen) {
+          _toggleSidebar();
+        }
+      },
+      child: Stack(
+        children: [
+          // Main content
+          AnimatedContainer(
+            duration: Duration(milliseconds: 300),
+            transform: Matrix4.translationValues(
+              _isSidebarOpen ? -MediaQuery.of(context).size.width * 0.85 : 0,
+              0,
+              0,
+            ),
+            child: child,
+          ),
+
+          // Sidebar
+          if (_isSidebarOpen)
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: Sidebar(
+                userData: userData,
+                onClose: _toggleSidebar,
+                isDarkMode: _isDarkMode,
+                toggleDarkMode: _toggleDarkMode,
+              ),
+            ),
+
+          // Overlay when sidebar is open
+          if (_isSidebarOpen)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              right: MediaQuery.of(context).size.width * 0.85,
+              child: GestureDetector(
+                onTap: _toggleSidebar,
+                child: Container(
+                  color: Colors.black.withOpacity(0.5),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadDataFromApi() async {
@@ -215,11 +285,46 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer.cancel();
     _wheelCooldownSubscription.cancel();
     _puzzleCooldownSubscription.cancel();
     _videoCooldownSubscription.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App came back to foreground, refresh data
+      _refreshUserData();
+      _loadCooldownsFromApi();
+    }
+  }
+
+  Future<void> _refreshUserData() async {
+    try {
+      final result = await UserService.getCurrentUser();
+      if (result['success'] == true) {
+        setState(() {
+          currentUser = result['user'];
+          userId = result['userId'];
+          // Update user data from API response
+          userData = {
+            "level": currentUser?['niveau'] ?? 1,
+            "points": currentUser?['points'] ?? 0,
+            "xpActuel": currentUser?['xpActuel'] ?? 0,
+            "xpProchainNiveau": currentUser?['xpProchainNiveau'] ?? 1000,
+            "rank": currentUser?['rank'] ?? "BRONZE",
+            "nomComplet": currentUser?['nomComplet'] ?? "Utilisateur",
+            "photoProfil": currentUser?['photoProfil'] ?? "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTxz7qJ9pU6Xj2EJKaRDVz-9Bd0xh2LnMklGw&s"
+          };
+        });
+        print('User data refreshed: Level ${userData["level"]}, Points ${userData["points"]}');
+      }
+    } catch (e) {
+      print('Error refreshing user data: $e');
+    }
   }
 
   // Charger la préférence du mode sombre
@@ -429,31 +534,34 @@ class _HomeScreenState extends State<HomeScreen> {
     final rankInfo = getRankInfo(userData["level"]);
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: _backgroundColor,
       appBar: _buildAppBar(context, rankInfo),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Section Points et Niveau
-            _buildPointsSection(context),
-            SizedBox(height: 16),
+      body: _buildWithSidebar(
+        SingleChildScrollView(
+          child: Column(
+            children: [
+              // Section Points et Niveau
+              _buildPointsSection(context),
+              SizedBox(height: 16),
 
-            // Barre de recherche améliorée
-            _buildSearchBar(),
-            SizedBox(height: 24),
+              // Barre de recherche améliorée
+              _buildSearchBar(),
+              SizedBox(height: 24),
 
-            // Section Catégories agrandie
-            _buildCategoriesSection(),
-            SizedBox(height: 24),
+              // Section Catégories agrandie
+              _buildCategoriesSection(),
+              SizedBox(height: 24),
 
-            // Section Événements améliorée
-            _buildEventsSection(),
-            SizedBox(height: 24),
+              // Section Événements améliorée
+              _buildEventsSection(),
+              SizedBox(height: 24),
 
-            // Assistant IA avec input direct
-            _buildChatbotSection(context),
-            SizedBox(height: 20),
-          ],
+              // Assistant IA avec input direct
+              _buildChatbotSection(context),
+              SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -715,7 +823,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           _isOnCooldown(_wheelCooldown) ? () {} : () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => WheelGameScreen()),
+                              MaterialPageRoute(builder: (context) => WheelGameScreen(onPointsEarned: _refreshUserData,)),
                             );
                           },
                         ),
@@ -743,7 +851,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           _isOnCooldown(_puzzleCooldown) ? () {} : () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => PuzzleGameScreen()),
+                              MaterialPageRoute(builder: (context) => PuzzleGameScreen(onPointsEarned: _refreshUserData,)),
                             );
                           },
                         ),
@@ -771,7 +879,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           _isOnCooldown(_videoCooldown) ? () {} : () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => VideoAdScreen()),
+                              MaterialPageRoute(builder: (context) => VideoAdScreen(onPointsEarned: _refreshUserData,)),
                             );
                           },
                         ),
@@ -815,14 +923,87 @@ class _HomeScreenState extends State<HomeScreen> {
       child: IconButton(
         icon: Icon(icon, color: iconColor, size: 22),
         onPressed: () async {
+          // Store current data before navigation
+          final oldLevel = userData["level"];
+          final oldPoints = userData["points"];
+
           onPressed();
-          // Refresh cooldowns when returning from game screens
+
+          // Wait a bit for the game to complete and return
           await Future.delayed(Duration(milliseconds: 500));
           if (mounted) {
+            // Refresh user data and cooldowns
+            await _refreshUserData();
             await _loadCooldownsFromApi();
+
+            // Check if level changed
+            final newLevel = userData["level"];
+            final newPoints = userData["points"];
+
+            if (newLevel > oldLevel) {
+              _showLevelUpNotification(newLevel);
+            } else if (newPoints > oldPoints) {
+              _showPointsEarnedNotification(newPoints - oldPoints);
+            }
           }
         },
         padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  void _showLevelUpNotification(int newLevel) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Color(0xFFFFD700),
+        content: Row(
+          children: [
+            Icon(Icons.emoji_events, color: Colors.black),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Félicitations ! Vous êtes maintenant niveau $newLevel',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        duration: Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
+  void _showPointsEarnedNotification(int pointsEarned) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Color(0xFF6A11CB),
+        content: Row(
+          children: [
+            Icon(Icons.celebration, color: Colors.white),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '+$pointsEarned points gagnés !',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
       ),
     );
   }

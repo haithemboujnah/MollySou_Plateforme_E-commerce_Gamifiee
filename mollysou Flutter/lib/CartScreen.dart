@@ -1,9 +1,10 @@
+// Replace the entire CartScreen.dart with this dynamic version
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'services/user_service.dart';
+import 'services/cart_service.dart';
 import 'PaymentScreen.dart';
-import 'Product.dart';
 
 class CartScreen extends StatefulWidget {
   @override
@@ -11,43 +12,51 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  List<Product> cartItems = [
-    Product(
-      id: '1',
-      name: 'Concert Rock Festival',
-      price: 45.00,
-      image: '🎵',
-      category: 'Concerts',
-    ),
-    Product(
-      id: '2',
-      name: 'Match de Football',
-      price: 35.00,
-      image: '⚽',
-      category: 'Sports',
-    ),
-    Product(
-      id: '3',
-      name: 'Comédie Musicale',
-      price: 60.00,
-      image: '🎭',
-      category: 'Théâtre',
-    ),
-  ];
-
+  List<dynamic> cartItems = [];
+  bool _isLoading = true;
   bool _isDarkMode = false;
+  int? _userId;
 
   @override
   void initState() {
     super.initState();
-    _loadDarkModePreference();
+    _loadUserAndCart();
   }
 
-  Future<void> _loadDarkModePreference() async {
+  Future<void> _loadUserAndCart() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _isDarkMode = prefs.getBool('isDarkMode') ?? false;
     });
+
+    final userResult = await UserService.getCurrentUser();
+    if (userResult['success'] == true) {
+      setState(() {
+        _userId = userResult['userId'];
+      });
+      await _loadCartItems();
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadCartItems() async {
+    if (_userId == null) return;
+
+    try {
+      final cartData = await CartService.getUserCart(_userId!);
+      setState(() {
+        cartItems = cartData;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading cart: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   // Couleurs pour le mode sombre
@@ -59,7 +68,7 @@ class _CartScreenState extends State<CartScreen> {
   Color get _iconColor => _isDarkMode ? Colors.white : Color(0xFF2D3748);
 
   double get totalPrice {
-    return cartItems.fold(0, (sum, item) => sum + (item.price * item.quantity));
+    return cartItems.fold(0, (sum, item) => sum + (double.parse(item['price'].toString()) * item['quantity']));
   }
 
   @override
@@ -75,7 +84,11 @@ class _CartScreenState extends State<CartScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: Column(
+      body: _isLoading
+          ? _buildLoadingState()
+          : _userId == null
+          ? _buildLoginRequired()
+          : Column(
         children: [
           Expanded(
             child: cartItems.isEmpty
@@ -83,6 +96,53 @@ class _CartScreenState extends State<CartScreen> {
                 : _buildCartItems(),
           ),
           _buildTotalSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6A11CB)),
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Chargement du panier...',
+            style: TextStyle(
+              color: _secondaryTextColor,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoginRequired() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.person_off, size: 64, color: _secondaryTextColor),
+          SizedBox(height: 16),
+          Text(
+            'Connexion requise',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: _textColor,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Veuillez vous connecter pour accéder à votre panier',
+            style: TextStyle(color: _secondaryTextColor),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -126,13 +186,17 @@ class _CartScreenState extends State<CartScreen> {
       padding: EdgeInsets.all(16),
       itemCount: cartItems.length,
       itemBuilder: (context, index) {
-        final product = cartItems[index];
-        return _buildCartItem(product, index);
+        final cartItem = cartItems[index];
+        return _buildCartItem(cartItem, index);
       },
     );
   }
 
-  Widget _buildCartItem(Product product, int index) {
+  Widget _buildCartItem(Map<String, dynamic> cartItem, int index) {
+    final price = double.parse(cartItem['price'].toString());
+    final stock = cartItem['stock'] ?? 0;
+    final isAvailable = stock > 0;
+
     return Card(
       margin: EdgeInsets.only(bottom: 12),
       color: _cardColor,
@@ -150,10 +214,14 @@ class _CartScreenState extends State<CartScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Center(
-                child: Text(
-                  product.image,
-                  style: TextStyle(fontSize: 24),
-                ),
+                child: cartItem['productImage'] != null
+                    ? Image.network(
+                  cartItem['productImage'],
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                )
+                    : Icon(Icons.shopping_bag, color: _secondaryTextColor),
               ),
             ),
             SizedBox(width: 16),
@@ -164,7 +232,7 @@ class _CartScreenState extends State<CartScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    product.name,
+                    cartItem['productName'] ?? 'Produit sans nom',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -175,7 +243,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   SizedBox(height: 4),
                   Text(
-                    product.category,
+                    cartItem['category'] ?? 'Catégorie',
                     style: TextStyle(
                       color: _secondaryTextColor,
                       fontSize: 12,
@@ -183,13 +251,21 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '${product.price.toStringAsFixed(2)}€',
+                    '${price.toStringAsFixed(2)}€',
                     style: TextStyle(
                       color: Color(0xFF6A11CB),
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
                   ),
+                  if (!isAvailable)
+                    Text(
+                      'Stock épuisé',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 12,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -201,10 +277,7 @@ class _CartScreenState extends State<CartScreen> {
                 IconButton(
                   icon: Icon(Icons.delete, color: Colors.red[300], size: 20),
                   onPressed: () {
-                    setState(() {
-                      cartItems.removeAt(index);
-                    });
-                    _showDeleteSnackbar(product.name);
+                    _removeFromCart(cartItem['productId']);
                   },
                 ),
                 SizedBox(height: 8),
@@ -220,23 +293,30 @@ class _CartScreenState extends State<CartScreen> {
                       IconButton(
                         icon: Icon(Icons.remove, size: 18, color: _textColor),
                         onPressed: () {
-                          if (product.quantity > 1) {
-                            setState(() {
-                              product.quantity--;
-                            });
+                          final currentQuantity = cartItem['quantity'];
+                          if (currentQuantity > 1) {
+                            _updateCartItem(cartItem['productId'], currentQuantity - 1);
                           }
                         },
                       ),
                       Text(
-                        product.quantity.toString(),
+                        cartItem['quantity'].toString(),
                         style: TextStyle(fontWeight: FontWeight.bold, color: _textColor),
                       ),
                       IconButton(
                         icon: Icon(Icons.add, size: 18, color: _textColor),
                         onPressed: () {
-                          setState(() {
-                            product.quantity++;
-                          });
+                          final currentQuantity = cartItem['quantity'];
+                          if (currentQuantity < stock) {
+                            _updateCartItem(cartItem['productId'], currentQuantity + 1);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Stock insuffisant'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
                         },
                       ),
                     ],
@@ -295,16 +375,7 @@ class _CartScreenState extends State<CartScreen> {
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
-              onPressed: () {
-                if (cartItems.isNotEmpty) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PaymentScreen(totalAmount: totalPrice),
-                    ),
-                  );
-                }
-              },
+              onPressed: cartItems.isNotEmpty ? _proceedToPayment : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFF6A11CB),
                 shape: RoundedRectangleBorder(
@@ -327,13 +398,69 @@ class _CartScreenState extends State<CartScreen> {
     );
   }
 
-  void _showDeleteSnackbar(String productName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$productName supprimé du panier'),
-        backgroundColor: Color(0xFF6A11CB),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  Future<void> _updateCartItem(int productId, int quantity) async {
+    if (_userId == null) return;
+
+    try {
+      final result = await CartService.updateCartItem(_userId!, productId, quantity);
+      if (result['success'] == true) {
+        await _loadCartItems(); // Reload cart
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['error'] ?? 'Erreur de mise à jour'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur de connexion'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _removeFromCart(int productId) async {
+    if (_userId == null) return;
+
+    try {
+      final result = await CartService.removeFromCart(_userId!, productId);
+      if (result['success'] == true) {
+        await _loadCartItems(); // Reload cart
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Produit supprimé du panier'),
+            backgroundColor: Color(0xFF6A11CB),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['error'] ?? 'Erreur de suppression'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erreur de connexion'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _proceedToPayment() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PaymentScreen(totalAmount: totalPrice, cartItems: cartItems),
       ),
     );
   }

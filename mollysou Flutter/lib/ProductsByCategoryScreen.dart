@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mollysou/services/cart_service.dart';
 import 'package:mollysou/services/product_service.dart';
+import 'package:mollysou/services/user_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ProductsByCategoryScreen extends StatefulWidget {
@@ -370,21 +372,67 @@ class _ProductsByCategoryScreenState extends State<ProductsByCategoryScreen> {
     );
   }
 
-  void _addToCart(Map<String, dynamic> product) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: Color(0xFF6A11CB),
-        content: Text(
-          '${product['nom']} ajouté au panier',
-          style: TextStyle(color: Colors.white),
+  void _addToCart(Map<String, dynamic> product) async {
+    // Get user ID
+    final userResult = await UserService.getCurrentUser();
+    if (userResult['success'] == true) {
+      final userId = userResult['userId'];
+      final productId = product['id'];
+
+      try {
+        final result = await CartService.addToCart(userId, productId, 1);
+
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: Color(0xFF6A11CB),
+              content: Text(
+                '${product['nom']} ajouté au panier',
+                style: TextStyle(color: Colors.white),
+              ),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: Colors.red,
+              content: Text(
+                result['error'] ?? 'Erreur lors de l\'ajout au panier',
+                style: TextStyle(color: Colors.white),
+              ),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text(
+              'Erreur de connexion',
+              style: TextStyle(color: Colors.white),
+            ),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red,
+          content: Text(
+            'Veuillez vous connecter',
+            style: TextStyle(color: Colors.white),
+          ),
+          duration: Duration(seconds: 2),
         ),
-        duration: Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    );
+      );
+    }
   }
 
   void _showProductDetails(Map<String, dynamic> product) {

@@ -13,8 +13,13 @@ import 'HomeScreen.dart';
 class QrCodeScreen extends StatefulWidget {
   final double totalAmount;
   final String orderNumber;
+  final List<dynamic> cartItems; // Add cartItems parameter
 
-  QrCodeScreen({required this.totalAmount, required this.orderNumber});
+  QrCodeScreen({
+    required this.totalAmount,
+    required this.orderNumber,
+    required this.cartItems, // Add cartItems parameter
+  });
 
   @override
   _QrCodeScreenState createState() => _QrCodeScreenState();
@@ -45,12 +50,31 @@ class _QrCodeScreenState extends State<QrCodeScreen> {
   Color get _cardColor => _isDarkMode ? Color(0xFF16213E) : Colors.white;
   Color get _iconColor => _isDarkMode ? Colors.white : Color(0xFF2D3748);
 
+  // Get event name from cart items or use default
+  String get _eventName {
+    if (widget.cartItems.isNotEmpty) {
+      final firstItem = widget.cartItems.first;
+      return firstItem['productName'] ?? 'Produit MollySou';
+    }
+    return 'Produit MollySou';
+  }
+
+  // Get product details for QR data
   String get _qrData {
+    final productNames = widget.cartItems
+        .map((item) => '• ${item['productName'] ?? 'Produit'} x${item['quantity']}')
+        .join('\n');
+
     return '''
-Commande: ${widget.orderNumber}
+COMMANDE MOLLYSOU
+N°: ${widget.orderNumber}
 Montant: ${widget.totalAmount.toStringAsFixed(2)}€
 Date: ${DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())}
-Événement: Concert Rock Festival
+
+PRODUITS:
+$productNames
+
+Merci pour votre achat !
     ''';
   }
 
@@ -145,14 +169,15 @@ Date: ${DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())}
                               ),
                             ),
                             SizedBox(height: 16),
-                            Text(
-                              'Scannez ce code à l\'entrée',
-                              style: TextStyle(
-                                color: _secondaryTextColor,
-                                fontSize: 14,
-                              ),
+                          Text(
+                            'Présentez ce code pour récupérer vos produits',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _secondaryTextColor,
+                              fontSize: 14,
                             ),
-                            SizedBox(height: 8),
+                          ),
+                          SizedBox(height: 8),
                             Text(
                               widget.orderNumber,
                               style: TextStyle(
@@ -171,7 +196,11 @@ Date: ${DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())}
                     _buildOrderDetail('N° de commande', widget.orderNumber),
                     _buildOrderDetail('Montant total', '${widget.totalAmount.toStringAsFixed(2)}€'),
                     _buildOrderDetail('Date', DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())),
-                    _buildOrderDetail('Événement', 'Concert Rock Festival'),
+                    _buildOrderDetail('Nombre d\'articles', '${_getTotalItems()} produit(s)'),
+
+                    // Liste des produits achetés
+                    SizedBox(height: 16),
+                    _buildProductList(),
                   ],
                 ),
               ),
@@ -269,6 +298,96 @@ Date: ${DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())}
     );
   }
 
+  Widget _buildProductList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Produits achetés:',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: _textColor,
+            fontSize: 14,
+          ),
+        ),
+        SizedBox(height: 8),
+        ...widget.cartItems.map((item) => _buildProductItem(item)).toList(),
+      ],
+    );
+  }
+
+  Widget _buildProductItem(Map<String, dynamic> item) {
+    final price = double.parse(item['price'].toString());
+    final quantity = item['quantity'] ?? 1;
+    final total = price * quantity;
+
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          // Image du produit
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: _isDarkMode ? Color(0xFF0F3460) : Colors.grey[200],
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Center(
+              child: item['productImage'] != null
+                  ? Image.network(
+                item['productImage'],
+                width: 20,
+                height: 20,
+                fit: BoxFit.cover,
+              )
+                  : Icon(Icons.shopping_bag, size: 16, color: _secondaryTextColor),
+            ),
+          ),
+          SizedBox(width: 12),
+
+          // Nom du produit
+          Expanded(
+            child: Text(
+              item['productName'] ?? 'Produit sans nom',
+              style: TextStyle(
+                color: _textColor,
+                fontSize: 12,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+
+          // Quantité et prix
+          Text(
+            'x$quantity',
+            style: TextStyle(
+              color: _secondaryTextColor,
+              fontSize: 12,
+            ),
+          ),
+          SizedBox(width: 8),
+          Text(
+            '${total.toStringAsFixed(2)}€',
+            style: TextStyle(
+              color: _textColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _getTotalItems() {
+    return widget.cartItems.fold<int>(
+      0,
+          (sum, item) => sum + int.tryParse(item['quantity'].toString())!,
+    );
+  }
+
   Future<void> _shareQrCode() async {
     setState(() {
       _isSaving = true;
@@ -279,47 +398,55 @@ Date: ${DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())}
       final Uint8List pngBytes = await _captureQrCode();
 
       // Message détaillé avec instructions
+      final productList = widget.cartItems
+          .map((item) => '• ${item['productName'] ?? 'Produit'} x${item['quantity']} - ${double.parse(item['price'].toString()).toStringAsFixed(2)}€')
+          .join('\n');
+
       final String shareText = '''
-🎫 MON TICKET ÉVÉNEMENT
+🛍️ MA COMMANDE MOLLYSOU
 
 ✅ Paiement confirmé !
 📋 Commande: ${widget.orderNumber}
-💰 Montant: ${widget.totalAmount.toStringAsFixed(2)}€
-📅 Date: ${DateFormat('dd/MM/yyyy').format(DateTime.now())}
-🎸 Événement: Concert Rock Festival
+💰 Montant total: ${widget.totalAmount.toStringAsFixed(2)}€
+📅 Date: ${DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())}
+
+🛒 PRODUITS COMMANDÉS:
+$productList
 
 📍 INSTRUCTIONS:
-1️⃣ Présentez ce QR code à l'entrée
+1️⃣ Présentez ce QR code au vendeur
 2️⃣ Il sera scanné pour validation
-3️⃣ Gardez-le jusqu'à la fin de l'événement
+3️⃣ Récupérez vos produits
 
 💡 CONSEILS:
 • Faites une CAPTURE D'ÉCRAN pour sauvegarder
 • Ou partagez vers GALERIE/GOOGLE DRIVE
 • Ayez le QR code visible sur votre téléphone
+
+Merci pour votre confiance ! 🎉
     ''';
 
       // Partager avec instructions claires
       await Share.share(
         shareText,
-        subject: '🎫 Mon Ticket - Commande ${widget.orderNumber}',
+        subject: '🛍️ Ma Commande MollySou - ${widget.orderNumber}',
       );
 
       _showSuccessSnackbar(
           'QR code partagé !\n'
               '💡 Conseil: Faites une capture d\'écran\n'
-              'ou sauvegardez dans votre galerie.'
+              'pour sauvegarder votre reçu.'
       );
 
     } catch (e) {
       // Fallback simple
       await Share.share(
-        'Mon ticket - Commande ${widget.orderNumber}\n'
+        'Ma commande MollySou - ${widget.orderNumber}\n'
             'Montant: ${widget.totalAmount.toStringAsFixed(2)}€\n'
-            'Événement: Concert Rock Festival\n\n'
+            'Date: ${DateFormat('dd/MM/yyyy').format(DateTime.now())}\n\n'
             'Le QR code est dans l\'application.',
       );
-      _showSuccessSnackbar('Détails du ticket partagés !');
+      _showSuccessSnackbar('Détails de la commande partagés !');
     } finally {
       setState(() {
         _isSaving = false;
