@@ -23,7 +23,7 @@ public class User {
     private Integer xpActuel = 0;
     private Integer xpProchainNiveau = 1000;
     @Column(name = "user_rank")
-    private String rank = "BRONZE";
+    private String rank = "UNRANKED";
 
     private String photoProfil;
 
@@ -35,6 +35,9 @@ public class User {
 
     @Column(name = "last_video_ad")
     private LocalDateTime lastVideoAd;
+
+    @Column(name = "last_reflex_game")
+    private LocalDateTime lastReflexGame;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -100,6 +103,10 @@ public class User {
         return lastVideoAd;
     }
 
+    public LocalDateTime getLastReflexGame() {
+        return lastReflexGame;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -162,6 +169,10 @@ public class User {
 
     public void setLastVideoAd(LocalDateTime lastVideoAd) {
         this.lastVideoAd = lastVideoAd;
+    }
+
+    public void setLastReflexGame(LocalDateTime lastReflexGame) {
+        this.lastReflexGame = lastReflexGame;
     }
 
     public void setCreatedAt(LocalDateTime createdAt) {

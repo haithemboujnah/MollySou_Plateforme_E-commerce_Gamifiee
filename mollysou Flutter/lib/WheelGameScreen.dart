@@ -108,7 +108,7 @@ class _WheelGameScreenState extends State<WheelGameScreen> with SingleTickerProv
     final lastSpinMillis = prefs.getInt('lastSpinTime');
     if (lastSpinMillis != null) {
       final lastSpinTime = DateTime.fromMillisecondsSinceEpoch(lastSpinMillis);
-      final nextSpinTime = lastSpinTime.add(Duration(hours: 24));
+      final nextSpinTime = lastSpinTime.add(Duration(hours: 12));
       final now = DateTime.now();
 
       if (now.isBefore(nextSpinTime)) {
@@ -225,35 +225,60 @@ class _WheelGameScreenState extends State<WheelGameScreen> with SingleTickerProv
       _canSpin = false;
     });
 
-    // Update points in database
+    // Mettre à jour les points et XP dans la base de données
     if (_userId != null) {
       try {
-        final result = await PointsService.addPoints(_userId!, _pointsWon);
-        if (result['success'] == true) {
-          print('Successfully added $_pointsWon points to user');
+        final result = await PointsService.addGameRewards(
+          userId: _userId!,
+          points: _pointsWon,
+          gameType: 'wheel',
+        );
 
-          // Show level up message if applicable
-          final newUserData = result['user'];
-          final oldLevel = userData['level'] ?? 1;
-          final newLevel = newUserData['niveau'] ?? 1;
+        if (result['success'] == true) {
+          print('✅ Successfully added rewards');
+
+          // FORCE REFRESH OF ALL USER DATA
+          final refreshResult = await UserService.syncUserDataFromDatabase();
+
+          if (refreshResult['success'] == true) {
+            setState(() {
+              final currentUser = refreshResult['user'];
+              userData = {
+                "level": currentUser?['niveau'] ?? 1,
+                "points": currentUser?['points'] ?? 0,
+                "xpActuel": currentUser?['xpActuel'] ?? 0,
+                "xpProchainNiveau": currentUser?['xpProchainNiveau'] ?? 1000,
+                "rank": currentUser?['rank'] ?? "BRONZE",
+                "nomComplet": currentUser?['nomComplet'] ?? "Utilisateur",
+              };
+            });
+            print('🔄 User data refreshed after game: Level ${userData["level"]}, Points ${userData["points"]}');
+          }
 
           if (widget.onPointsEarned != null) {
             widget.onPointsEarned!();
           }
 
+          // Check for level up
+          final newUserData = result['user'];
+          final oldLevel = userData['level'] ?? 1;
+          final newLevel = newUserData['niveau'] ?? 1;
+
           if (newLevel > oldLevel) {
             _showLevelUpDialog(newLevel);
+          } else {
+            _showRewardSummary(_pointsWon, result['xpAdded'] ?? 0);
           }
         } else {
-          print('Failed to update points: ${result['error']}');
+          print('❌ Failed to update points: ${result['error']}');
         }
       } catch (e) {
-        print('Error updating points: $e');
+        print('❌ Error updating points: $e');
       }
     }
 
-    // Set cooldown to 24 hours
-    final newCooldown = Duration(hours: 24);
+    // Mettre à jour le cooldown
+    final newCooldown = Duration(hours: 12);
     setState(() {
       _timeRemaining = newCooldown;
     });
@@ -262,10 +287,9 @@ class _WheelGameScreenState extends State<WheelGameScreen> with SingleTickerProv
     if (_userId != null) {
       try {
         await CooldownService.updateCooldown(_userId!, 'wheel');
-        print('Wheel cooldown updated in API');
+        print('✅ Wheel cooldown updated in API');
       } catch (e) {
-        print('Error updating cooldown in API: $e');
-        // Fallback to local storage
+        print('❌ Error updating cooldown in API: $e');
         await CooldownManager().saveLocalCooldown('Spin', newCooldown);
       }
     } else {
@@ -274,8 +298,135 @@ class _WheelGameScreenState extends State<WheelGameScreen> with SingleTickerProv
 
     // Notify cooldown manager
     CooldownManager().updateWheelCooldown(newCooldown);
-
     _startTimer();
+  }
+
+  void _showRewardSummary(int points, int xp) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: _cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFF6B6B), Color(0xFF6A11CB)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.celebration, color: Colors.white, size: 40),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Récompenses Gagnées !',
+              style: TextStyle(
+                color: _textColor,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Points
+            Container(
+              padding: EdgeInsets.all(12),
+              margin: EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Color(0xFFFFEAA7).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFFFFD700)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.emoji_events, color: Color(0xFFFFD700)),
+                  SizedBox(width: 8),
+                  Text(
+                    '$points Points',
+                    style: TextStyle(
+                      color: Color(0xFFFFD700),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // XP
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Color(0xFF4ECDC4).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFF4ECDC4)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.trending_up, color: Color(0xFF4ECDC4)),
+                  SizedBox(width: 8),
+                  Text(
+                    '$xp XP',
+                    style: TextStyle(
+                      color: Color(0xFF4ECDC4),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 16),
+            Text(
+              'Continuez à jouer pour gagner plus de récompenses !',
+              style: TextStyle(
+                color: _secondaryTextColor,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF6A11CB),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Super !',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Ajouter la méthode pour afficher les erreurs
+  void _showErrorSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 3),
+      ),
+    );
   }
 
   void _showLevelUpDialog(int newLevel) {

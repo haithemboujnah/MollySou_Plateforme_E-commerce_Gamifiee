@@ -330,7 +330,7 @@ class _ProductsByCategoryScreenState extends State<ProductsByCategoryScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            '€$price',
+                            '$price DT',
                             style: TextStyle(
                               color: _priceColor,
                               fontWeight: FontWeight.bold,
@@ -584,7 +584,7 @@ class _ProductsByCategoryScreenState extends State<ProductsByCategoryScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '€${product['prix']?.toString() ?? '0.0'}',
+                      '${product['prix']?.toString() ?? '0.0'} DT',
                       style: TextStyle(
                         color: _priceColor,
                         fontSize: 24,

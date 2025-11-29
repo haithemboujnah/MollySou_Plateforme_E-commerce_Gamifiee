@@ -16,8 +16,9 @@ public class UserDTO {
     private LocalDateTime lastWheelSpin;
     private LocalDateTime lastPuzzleGame;
     private LocalDateTime lastVideoAd;
+    private LocalDateTime lastReflexGame;
 
-    public UserDTO(String email, String nomComplet, String genre, Integer niveau, Integer points, Integer xpActuel, Integer xpProchainNiveau, String rank, String photoProfil, LocalDateTime lastWheelSpin, LocalDateTime lastPuzzleGame, LocalDateTime lastVideoAd) {
+    public UserDTO(String email, String nomComplet, String genre, Integer niveau, Integer points, Integer xpActuel, Integer xpProchainNiveau, String rank, String photoProfil, LocalDateTime lastWheelSpin, LocalDateTime lastPuzzleGame, LocalDateTime lastVideoAd, LocalDateTime lastReflexGame) {
         this.email = email;
         this.nomComplet = nomComplet;
         this.genre = genre;
@@ -30,6 +31,7 @@ public class UserDTO {
         this.lastWheelSpin = lastWheelSpin;
         this.lastPuzzleGame = lastPuzzleGame;
         this.lastVideoAd = lastVideoAd;
+        this.lastReflexGame = lastReflexGame;
     }
 
     public UserDTO() {
@@ -88,6 +90,10 @@ public class UserDTO {
         return lastVideoAd;
     }
 
+    public LocalDateTime getLastReflexGame() {
+        return lastReflexGame;
+    }
+
     public void setId(Long id) {
         this.id = id;
     }
@@ -138,6 +144,10 @@ public class UserDTO {
 
     public void setLastVideoAd(LocalDateTime lastVideoAd) {
         this.lastVideoAd = lastVideoAd;
+    }
+
+    public void setLastReflexGame(LocalDateTime lastReflexGame) {
+        this.lastReflexGame = lastReflexGame;
     }
 }
 

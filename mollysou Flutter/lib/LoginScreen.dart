@@ -405,7 +405,10 @@ class _GamifiedLoginScreenState extends State<LoginScreen>
       });
 
       if (result['success'] == true) {
-        _showSuccessDialog();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+        );
       } else {
         _showErrorDialog(result['error'] ?? "Erreur de connexion");
       }
@@ -416,6 +419,7 @@ class _GamifiedLoginScreenState extends State<LoginScreen>
       _showErrorDialog("Erreur de connexion au serveur");
     }
   }
+
 
   void _showForgotPasswordDialog() {
     showDialog(

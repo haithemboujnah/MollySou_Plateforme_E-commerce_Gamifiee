@@ -13,12 +13,22 @@ import 'HomeScreen.dart';
 class QrCodeScreen extends StatefulWidget {
   final double totalAmount;
   final String orderNumber;
-  final List<dynamic> cartItems; // Add cartItems parameter
+  final List<dynamic> cartItems;
+  final double? discountAmount;
+  final double? originalAmount;
+  final String? userRank;
+  final int pointsEarned; // Nouveau paramètre
+  final int xpEarned; // Nouveau paramètre
 
   QrCodeScreen({
     required this.totalAmount,
     required this.orderNumber,
-    required this.cartItems, // Add cartItems parameter
+    required this.cartItems,
+    this.discountAmount,
+    this.originalAmount,
+    this.userRank,
+    this.pointsEarned = 0, // Valeur par défaut
+    this.xpEarned = 0, // Valeur par défaut
   });
 
   @override
@@ -49,15 +59,8 @@ class _QrCodeScreenState extends State<QrCodeScreen> {
   Color get _secondaryTextColor => _isDarkMode ? Colors.white70 : Colors.grey[600]!;
   Color get _cardColor => _isDarkMode ? Color(0xFF16213E) : Colors.white;
   Color get _iconColor => _isDarkMode ? Colors.white : Color(0xFF2D3748);
-
-  // Get event name from cart items or use default
-  String get _eventName {
-    if (widget.cartItems.isNotEmpty) {
-      final firstItem = widget.cartItems.first;
-      return firstItem['productName'] ?? 'Produit MollySou';
-    }
-    return 'Produit MollySou';
-  }
+  Color get _discountColor => _isDarkMode ? Color(0xFF00FFAA) : Color(0xFF00A86B);
+  Color get _rewardsColor => _isDarkMode ? Color(0xFFFFD700) : Color(0xFFFF6B00);
 
   // Get product details for QR data
   String get _qrData {
@@ -65,10 +68,22 @@ class _QrCodeScreenState extends State<QrCodeScreen> {
         .map((item) => '• ${item['productName'] ?? 'Produit'} x${item['quantity']}')
         .join('\n');
 
+    // Ajouter les informations de discount si disponibles
+    String discountInfo = '';
+    if (widget.discountAmount != null && widget.discountAmount! > 0) {
+      discountInfo = '\nDiscount: -${widget.discountAmount!.toStringAsFixed(2)} DT';
+    }
+
+    // Ajouter les récompenses si disponibles
+    String rewardsInfo = '';
+    if (widget.pointsEarned > 0 || widget.xpEarned > 0) {
+      rewardsInfo = '\nRécompenses: +${widget.pointsEarned} pts, +${widget.xpEarned} XP';
+    }
+
     return '''
 COMMANDE MOLLYSOU
 N°: ${widget.orderNumber}
-Montant: ${widget.totalAmount.toStringAsFixed(2)}€
+Montant: ${widget.totalAmount.toStringAsFixed(2)} DT$discountInfo$rewardsInfo
 Date: ${DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())}
 
 PRODUITS:
@@ -169,15 +184,15 @@ Merci pour votre achat !
                               ),
                             ),
                             SizedBox(height: 16),
-                          Text(
-                            'Présentez ce code pour récupérer vos produits',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: _secondaryTextColor,
-                              fontSize: 14,
+                            Text(
+                              'Présentez ce code pour récupérer vos produits',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _secondaryTextColor,
+                                fontSize: 14,
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 8),
+                            SizedBox(height: 8),
                             Text(
                               widget.orderNumber,
                               style: TextStyle(
@@ -192,11 +207,19 @@ Merci pour votre achat !
                     ),
                     SizedBox(height: 20),
 
+                    // Section des récompenses (si gagnées)
+                    if (widget.pointsEarned > 0 || widget.xpEarned > 0)
+                      _buildRewardsSection(),
+
                     // Détails de la commande
                     _buildOrderDetail('N° de commande', widget.orderNumber),
-                    _buildOrderDetail('Montant total', '${widget.totalAmount.toStringAsFixed(2)}€'),
+                    _buildOrderDetail('Montant total', '${widget.totalAmount.toStringAsFixed(2)} DT'),
                     _buildOrderDetail('Date', DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())),
                     _buildOrderDetail('Nombre d\'articles', '${_getTotalItems()} produit(s)'),
+
+                    // Afficher le discount si disponible
+                    if (widget.discountAmount != null && widget.discountAmount! > 0)
+                      _buildDiscountInfo(),
 
                     // Liste des produits achetés
                     SizedBox(height: 16),
@@ -272,6 +295,100 @@ Merci pour votre achat !
     );
   }
 
+  // NOUVELLE MÉTHODE : Section des récompenses
+  Widget _buildRewardsSection() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16),
+      margin: EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: _rewardsColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _rewardsColor),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.celebration, color: _rewardsColor, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Récompenses Gagnées !',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: _rewardsColor,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              if (widget.pointsEarned > 0)
+                _buildRewardItem(
+                  'Points',
+                  '+${widget.pointsEarned}',
+                  Icons.emoji_events,
+                  Color(0xFFFFD700),
+                ),
+              if (widget.xpEarned > 0)
+                _buildRewardItem(
+                  'XP',
+                  '+${widget.xpEarned}',
+                  Icons.trending_up,
+                  Color(0xFF4ECDC4),
+                ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Ces récompenses ont été ajoutées à votre compte',
+            style: TextStyle(
+              color: _secondaryTextColor,
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRewardItem(String label, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: _textColor,
+            fontSize: 14,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: _secondaryTextColor,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildOrderDetail(String label, String value) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 8),
@@ -295,6 +412,63 @@ Merci pour votre achat !
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDiscountInfo() {
+    return Column(
+      children: [
+        SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.discount, color: _discountColor, size: 16),
+                SizedBox(width: 4),
+                Text(
+                  'Discount appliqué',
+                  style: TextStyle(
+                    color: _discountColor,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              '-${widget.discountAmount!.toStringAsFixed(2)} DT',
+              style: TextStyle(
+                color: _discountColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        if (widget.userRank != null) ...[
+          SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Votre Rank',
+                style: TextStyle(
+                  color: _secondaryTextColor,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                widget.userRank!,
+                style: TextStyle(
+                  color: _textColor,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 
@@ -369,7 +543,7 @@ Merci pour votre achat !
           ),
           SizedBox(width: 8),
           Text(
-            '${total.toStringAsFixed(2)}€',
+            '${total.toStringAsFixed(2)} DT',
             style: TextStyle(
               color: _textColor,
               fontSize: 12,
@@ -384,9 +558,17 @@ Merci pour votre achat !
   int _getTotalItems() {
     return widget.cartItems.fold<int>(
       0,
-          (sum, item) => sum + int.tryParse(item['quantity'].toString())!,
+          (sum, item) {
+        final q = item['quantity'];
+
+        // Convertir en int correctement et toujours retourner int
+        final quantity = q is int ? q : int.tryParse(q.toString()) ?? 1;
+
+        return sum + quantity; // -> toujours int
+      },
     );
   }
+
 
   Future<void> _shareQrCode() async {
     setState(() {
@@ -399,15 +581,30 @@ Merci pour votre achat !
 
       // Message détaillé avec instructions
       final productList = widget.cartItems
-          .map((item) => '• ${item['productName'] ?? 'Produit'} x${item['quantity']} - ${double.parse(item['price'].toString()).toStringAsFixed(2)}€')
+          .map((item) => '• ${item['productName'] ?? 'Produit'} x${item['quantity']} - ${double.parse(item['price'].toString()).toStringAsFixed(2)} DT')
           .join('\n');
+
+      // Ajouter les informations de discount
+      String discountInfo = '';
+      if (widget.discountAmount != null && widget.discountAmount! > 0) {
+        discountInfo = '\n🎁 Discount: -${widget.discountAmount!.toStringAsFixed(2)} DT';
+        if (widget.userRank != null) {
+          discountInfo += ' (Rank ${widget.userRank!})';
+        }
+      }
+
+      // Ajouter les récompenses
+      String rewardsInfo = '';
+      if (widget.pointsEarned > 0 || widget.xpEarned > 0) {
+        rewardsInfo = '\n🎉 Récompenses: +${widget.pointsEarned} points, +${widget.xpEarned} XP';
+      }
 
       final String shareText = '''
 🛍️ MA COMMANDE MOLLYSOU
 
 ✅ Paiement confirmé !
 📋 Commande: ${widget.orderNumber}
-💰 Montant total: ${widget.totalAmount.toStringAsFixed(2)}€
+💰 Montant total: ${widget.totalAmount.toStringAsFixed(2)} DT$discountInfo$rewardsInfo
 📅 Date: ${DateFormat('dd/MM/yyyy à HH:mm').format(DateTime.now())}
 
 🛒 PRODUITS COMMANDÉS:
@@ -442,7 +639,7 @@ Merci pour votre confiance ! 🎉
       // Fallback simple
       await Share.share(
         'Ma commande MollySou - ${widget.orderNumber}\n'
-            'Montant: ${widget.totalAmount.toStringAsFixed(2)}€\n'
+            'Montant: ${widget.totalAmount.toStringAsFixed(2)} DT\n'
             'Date: ${DateFormat('dd/MM/yyyy').format(DateTime.now())}\n\n'
             'Le QR code est dans l\'application.',
       );

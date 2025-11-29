@@ -1,17 +1,18 @@
-// Update PaymentScreen.dart
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:mollysou/services/points_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'QrCodeScreen.dart';
+import 'services/user_service.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double totalAmount;
-  final List<dynamic> cartItems; // Add this parameter
+  final List<dynamic> cartItems;
 
   PaymentScreen({
     required this.totalAmount,
-    required this.cartItems, // Add this parameter
+    required this.cartItems,
   });
 
   @override
@@ -27,10 +28,79 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _isProcessing = false;
   bool _isDarkMode = false;
 
+  // Variables pour le discount
+  Map<String, dynamic>? _currentUser;
+  double _discountPercentage = 0.0;
+  double _discountAmount = 0.0;
+  double _finalAmount = 0.0;
+  bool _isLoadingUser = true;
+
   @override
   void initState() {
     super.initState();
     _loadDarkModePreference();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final result = await UserService.getCurrentUser();
+      if (result['success'] == true) {
+        setState(() {
+          _currentUser = result['user'];
+          _calculateDiscount();
+          _isLoadingUser = false;
+        });
+      } else {
+        setState(() {
+          _isLoadingUser = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() {
+        _isLoadingUser = false;
+      });
+    }
+  }
+
+  void _calculateDiscount() {
+    if (_currentUser != null) {
+      String userRank = _currentUser!['rank'] ?? 'BRONZE';
+
+      // Déterminer le pourcentage de discount selon le rank
+      switch (userRank.toUpperCase()) {
+        case 'DIAMOND':
+          _discountPercentage = 50.0;
+          break;
+        case 'PLATINUM':
+          _discountPercentage = 20.0;
+          break;
+        case 'GOLD':
+          _discountPercentage = 15.0;
+          break;
+        case 'SILVER':
+          _discountPercentage = 10.0;
+          break;
+        case 'BRONZE':
+          _discountPercentage = 5.0;
+          break;
+        default:
+          _discountPercentage = 0.0;
+      }
+
+      // Calculer le montant du discount
+      double subtotal = widget.totalAmount;
+      _discountAmount = (subtotal * _discountPercentage) / 100;
+
+      // Calculer le montant final
+      double serviceFee = 2.50;
+      _finalAmount = (subtotal - _discountAmount) + serviceFee;
+    } else {
+      // Si pas d'utilisateur, pas de discount
+      double serviceFee = 2.50;
+      _finalAmount = widget.totalAmount + serviceFee;
+    }
   }
 
   Future<void> _loadDarkModePreference() async {
@@ -48,6 +118,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Color get _cardColor => _isDarkMode ? Color(0xFF16213E) : Colors.white;
   Color get _iconColor => _isDarkMode ? Colors.white : Color(0xFF2D3748);
   Color get _inputBackgroundColor => _isDarkMode ? Color(0xFF0F3460) : Colors.grey[50]!;
+  Color get _discountColor => _isDarkMode ? Color(0xFF00FFAA) : Color(0xFF00A86B);
 
   @override
   Widget build(BuildContext context) {
@@ -62,11 +133,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
+      body: _isLoadingUser
+          ? _buildLoadingState()
+          : SingleChildScrollView(
         padding: EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Badge de rank et discount
+            _buildRankBadge(),
+            SizedBox(height: 20),
+
             // Résumé de commande
             _buildOrderSummary(),
             SizedBox(height: 30),
@@ -87,7 +164,109 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6A11CB)),
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Chargement des informations...',
+            style: TextStyle(
+              color: _secondaryTextColor,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRankBadge() {
+    if (_currentUser == null) return SizedBox();
+
+    String userRank = _currentUser!['rank'] ?? 'BRONZE';
+    String rankName = _getRankName(userRank);
+    Color rankColor = _getRankColor(userRank);
+
+    return Card(
+      color: _cardColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // Badge du rank
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: _getRankGradient(userRank),
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: rankColor.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: Offset(0, 4),
+                  )
+                ],
+              ),
+              child: Icon(
+                Icons.star,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Votre Rank: $rankName',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _textColor,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Discount: $_discountPercentage%',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: _discountColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Économie: ${_discountAmount.toStringAsFixed(2)} DT',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _secondaryTextColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildOrderSummary() {
+    double serviceFee = 2.50;
+    double subtotal = widget.totalAmount;
+
     return Card(
       color: _cardColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -105,45 +284,119 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ),
             SizedBox(height: 16),
+
+            // Sous-total
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Sous-total', style: TextStyle(color: _secondaryTextColor)),
-                Text('${widget.totalAmount.toStringAsFixed(2)}€', style: TextStyle(color: _textColor)),
+                Text('${subtotal.toStringAsFixed(2)} DT', style: TextStyle(color: _textColor)),
               ],
             ),
             SizedBox(height: 8),
+
+            // Discount
+            if (_discountAmount > 0) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.discount, color: _discountColor, size: 16),
+                      SizedBox(width: 4),
+                      Text('Discount ($_discountPercentage%)',
+                          style: TextStyle(color: _discountColor)),
+                    ],
+                  ),
+                  Text(
+                    '-${_discountAmount.toStringAsFixed(2)} DT',
+                    style: TextStyle(
+                      color: _discountColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8),
+            ],
+
+            // Frais de service
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Frais de service', style: TextStyle(color: _secondaryTextColor)),
-                Text('2.50€', style: TextStyle(color: _textColor)),
+                Text('${serviceFee.toStringAsFixed(2)} DT', style: TextStyle(color: _textColor)),
               ],
             ),
             SizedBox(height: 12),
+
             Divider(color: _isDarkMode ? Colors.white24 : Colors.grey[300]),
             SizedBox(height: 8),
+
+            // Total final
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Total',
+                  'Total à payer',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: _textColor,
                   ),
                 ),
-                Text(
-                  '${(widget.totalAmount + 2.50).toStringAsFixed(2)}€',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6A11CB),
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (_discountAmount > 0)
+                      Text(
+                        '${(subtotal + serviceFee).toStringAsFixed(2)} DT',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _secondaryTextColor,
+                          decoration: TextDecoration.lineThrough,
+                        ),
+                      ),
+                    Text(
+                      '${_finalAmount.toStringAsFixed(2)} DT',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6A11CB),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
+
+            // Économie totale
+            if (_discountAmount > 0) ...[
+              SizedBox(height: 8),
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _discountColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _discountColor.withOpacity(0.3)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.savings, color: _discountColor, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      'Vous économisez ${_discountAmount.toStringAsFixed(2)} DT',
+                      style: TextStyle(
+                        color: _discountColor,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -222,7 +475,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  '${price.toStringAsFixed(2)}€ × $quantity',
+                  '${price.toStringAsFixed(2)}DT × $quantity',
                   style: TextStyle(
                     color: _secondaryTextColor,
                     fontSize: 12,
@@ -234,7 +487,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
           // Prix total pour cet article
           Text(
-            '${total.toStringAsFixed(2)}€',
+            '${total.toStringAsFixed(2)} DT',
             style: TextStyle(
               color: _textColor,
               fontWeight: FontWeight.w600,
@@ -273,16 +526,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
             SizedBox(height: 16),
 
-            // Nom sur la carte
             _buildFormField(
               label: 'Nom sur la carte',
-              hintText: 'John Doe',
+              hintText: 'Mr. X',
               controller: _nameController,
               icon: Icons.person,
             ),
             SizedBox(height: 16),
 
-            // Date d'expiration et CVV
             Row(
               children: [
                 Expanded(
@@ -373,7 +624,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
         )
             : Text(
-          'Payer ${(widget.totalAmount + 2.50).toStringAsFixed(2)}€',
+          'Payer ${_finalAmount.toStringAsFixed(2)} DT',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -398,22 +649,230 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _isProcessing = true;
     });
 
-    // Simulation de traitement de paiement
-    await Future.delayed(Duration(seconds: 2));
+    try {
+      // Récupérer l'ID utilisateur
+      final userResult = await UserService.getCurrentUser();
+      if (userResult['success'] != true) {
+        throw Exception('Utilisateur non connecté');
+      }
 
-    setState(() {
-      _isProcessing = false;
-    });
+      final userId = userResult['userId'];
 
-    // Générer le QR code et aller à l'écran de confirmation
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => QrCodeScreen(
-          totalAmount: widget.totalAmount + 2.50,
-          orderNumber: 'CMD-${DateTime.now().millisecondsSinceEpoch}',
-          cartItems: widget.cartItems, // Pass cart items to QR code screen
+      // Simulation de traitement de paiement
+      await Future.delayed(Duration(seconds: 2));
+
+      // Ajouter les récompenses (points + XP) pour l'achat
+      final rewardsResult = await PointsService.addPurchaseXP(
+        userId: userId,
+        purchaseAmount: _finalAmount,
+      );
+
+      if (rewardsResult['success'] == true) {
+        print('✅ Purchase rewards added successfully');
+        print('📊 Points added: ${rewardsResult['pointsAdded']}');
+        print('📈 XP added: ${rewardsResult['xpAdded']}');
+
+        // FORCE SYNC USER DATA TO UPDATE LOCAL STORAGE
+        final syncResult = await UserService.syncUserDataFromDatabase();
+        if (syncResult['success'] == true) {
+          print('🔄 User data synced after purchase');
+        }
+
+        // Afficher les récompenses gagnées
+        _showPurchaseRewardsDialog(
+          rewardsResult['pointsAdded'] ?? 0,
+          rewardsResult['xpAdded'] ?? 0,
+        );
+
+        // Naviguer vers l'écran QR Code
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => QrCodeScreen(
+              totalAmount: _finalAmount,
+              discountAmount: _discountAmount,
+              originalAmount: widget.totalAmount + 2.50,
+              orderNumber: 'CMD-${DateTime.now().millisecondsSinceEpoch}',
+              cartItems: widget.cartItems,
+              userRank: _currentUser?['rank'] ?? 'BRONZE',
+              pointsEarned: rewardsResult['pointsAdded'] ?? 0,
+              xpEarned: rewardsResult['xpAdded'] ?? 0,
+            ),
+          ),
+        );
+      } else {
+        print('❌ Failed to add purchase rewards: ${rewardsResult['error']}');
+
+        // Sync user data anyway to ensure consistency
+        await UserService.syncUserDataFromDatabase();
+
+        _showWarningSnackbar('Paiement réussi mais récompenses non ajoutées');
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => QrCodeScreen(
+              totalAmount: _finalAmount,
+              discountAmount: _discountAmount,
+              originalAmount: widget.totalAmount + 2.50,
+              orderNumber: 'CMD-${DateTime.now().millisecondsSinceEpoch}',
+              cartItems: widget.cartItems,
+              userRank: _currentUser?['rank'] ?? 'BRONZE',
+              pointsEarned: 0,
+              xpEarned: 0,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Payment processing error: $e');
+      _showErrorSnackbar('Erreur lors du traitement du paiement');
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  void _showPurchaseRewardsDialog(int pointsEarned, int xpEarned) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: _cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFF6B6B), Color(0xFF6A11CB)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.celebration, color: Colors.white, size: 40),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Récompenses Gagnées !',
+              style: TextStyle(
+                color: _textColor,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Merci pour votre achat !',
+              style: TextStyle(
+                color: _secondaryTextColor,
+                fontSize: 16,
+              ),
+            ),
+            SizedBox(height: 16),
+
+            // Points gagnés
+            Container(
+              padding: EdgeInsets.all(12),
+              margin: EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Color(0xFFFFEAA7).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFFFFD700)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.emoji_events, color: Color(0xFFFFD700)),
+                  SizedBox(width: 8),
+                  Text(
+                    '+$pointsEarned Points',
+                    style: TextStyle(
+                      color: Color(0xFFFFD700),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // XP gagné
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Color(0xFF4ECDC4).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFF4ECDC4)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.trending_up, color: Color(0xFF4ECDC4)),
+                  SizedBox(width: 8),
+                  Text(
+                    '+$xpEarned XP',
+                    style: TextStyle(
+                      color: Color(0xFF4ECDC4),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 16),
+            Text(
+              'Continuez vos achats pour gagner plus de récompenses !',
+              style: TextStyle(
+                color: _secondaryTextColor,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF6A11CB),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Super !',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWarningSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.white),
+            SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.orange,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -427,5 +886,39 @@ class _PaymentScreenState extends State<PaymentScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+  }
+
+  // Méthodes utilitaires pour les ranks
+  String _getRankName(String rank) {
+    switch (rank.toUpperCase()) {
+      case 'DIAMOND': return 'DIAMANT';
+      case 'PLATINUM': return 'PLATINE';
+      case 'GOLD': return 'OR';
+      case 'SILVER': return 'ARGENT';
+      case 'BRONZE': return 'BRONZE';
+      default: return rank;
+    }
+  }
+
+  Color _getRankColor(String rank) {
+    switch (rank.toUpperCase()) {
+      case 'DIAMOND': return Color(0xFF1E3A8A);
+      case 'PLATINUM': return Color(0xFF0BC5EA);
+      case 'GOLD': return Color(0xFFFFD700);
+      case 'SILVER': return Color(0xFFC0C0C0);
+      case 'BRONZE': return Color(0xFFCD7F32);
+      default: return Color(0xFF6A11CB);
+    }
+  }
+
+  List<Color> _getRankGradient(String rank) {
+    switch (rank.toUpperCase()) {
+      case 'DIAMOND': return [Color(0xFF1E3A8A), Color(0xFF3B82F6)];
+      case 'PLATINUM': return [Color(0xFF06B6D4), Color(0xFF0BC5EA)];
+      case 'GOLD': return [Color(0xFFFFF8DC), Color(0xFFFFD700)];
+      case 'SILVER': return [Color(0xFFF0F0F0), Color(0xFFC0C0C0)];
+      case 'BRONZE': return [Color(0xFFDEB887), Color(0xFFCD7F32)];
+      default: return [Color(0xFF6A11CB), Color(0xFF2575FC)];
+    }
   }
 }

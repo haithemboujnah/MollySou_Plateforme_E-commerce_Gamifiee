@@ -58,20 +58,92 @@ class UserService {
     }
   }
 
-  static Future<Map<String, dynamic>> getCurrentUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userString = prefs.getString('user');
-    final userId = prefs.getInt('userId');
+  static Future<void> updateLocalUserData(Map<String, dynamic> newUserData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    if (userString != null && userId != null) {
-      return {
-        'success': true,
-        'user': json.decode(userString),
-        'userId': userId
-      };
-    } else {
-      return {'success': false, 'error': 'Utilisateur non connecté'};
+      // Get current user data from local storage - USE CORRECT KEY
+      final userJson = prefs.getString('user'); // Changed from 'flutter.user' to 'user'
+      if (userJson != null) {
+        Map<String, dynamic> userData = json.decode(userJson);
+
+        // Update only the fields that change
+        userData['niveau'] = newUserData['niveau'] ?? userData['niveau'];
+        userData['points'] = newUserData['points'] ?? userData['points'];
+        userData['xpActuel'] = newUserData['xpActuel'] ?? userData['xpActuel'];
+        userData['xpProchainNiveau'] = newUserData['xpProchainNiveau'] ?? userData['xpProchainNiveau'];
+        userData['rank'] = newUserData['rank'] ?? userData['rank'];
+
+        // Save updated user data back to local storage - USE CORRECT KEY
+        await prefs.setString('user', json.encode(userData)); // Changed from 'flutter.user' to 'user'
+        print('✅ Local user data updated successfully - Level: ${userData['niveau']}, Points: ${userData['points']}');
+      } else {
+        print('❌ No user data found in local storage');
+      }
+    } catch (e) {
+      print('❌ Error updating local user data: $e');
     }
+  }
+
+  static Future<Map<String, dynamic>> syncUserDataFromDatabase() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('userId');
+
+      if (userId == null) {
+        return {'success': false, 'error': 'User not logged in'};
+      }
+
+      // Fetch fresh data from API
+      final response = await ApiService.get('users/$userId');
+
+      if (response.statusCode == 200) {
+        final userData = json.decode(response.body);
+
+        // Update local storage with fresh data - USE CORRECT KEY
+        await prefs.setString('user', json.encode(userData)); // This is the correct key
+        await prefs.setInt('userId', userData['id']);
+
+        print('✅ User data synced from database: Level ${userData['niveau']}, Points ${userData['points']}');
+
+        return {'success': true, 'user': userData};
+      } else {
+        print('❌ Failed to sync user data: ${response.statusCode}');
+        return {'success': false, 'error': 'Failed to sync user data'};
+      }
+    } catch (e) {
+      print('❌ Error syncing user data: $e');
+      return {'success': false, 'error': 'Sync error: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getCurrentUser() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userString = prefs.getString('user'); // This is the correct key
+      final userId = prefs.getInt('userId');
+
+      if (userString != null && userId != null) {
+        final userData = json.decode(userString);
+        print('📱 Loaded user from local storage - Level: ${userData['niveau']}, Points: ${userData['points']}');
+
+        return {
+          'success': true,
+          'user': userData,
+          'userId': userId
+        };
+      } else {
+        print('❌ No user data in local storage');
+        return {'success': false, 'error': 'Utilisateur non connecté'};
+      }
+    } catch (e) {
+      print('❌ Error getting current user: $e');
+      return {'success': false, 'error': 'Error getting user: $e'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> refreshUserData() async {
+    return await syncUserDataFromDatabase();
   }
 
   static Future<void> logout() async {
@@ -82,6 +154,7 @@ class UserService {
     await prefs.remove('lastSpinTime');
     await prefs.remove('lastGameTime');
     await prefs.remove('lastWatchTime');
+    await prefs.remove('lastReflexTime');
   }
 
   static Future<int?> getUserId() async {

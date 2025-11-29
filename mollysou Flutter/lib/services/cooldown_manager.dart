@@ -1,4 +1,3 @@
-// lib/utils/cooldown_manager.dart
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
@@ -7,17 +6,16 @@ class CooldownManager {
   factory CooldownManager() => _instance;
   CooldownManager._internal();
 
-  // Stream controllers for cooldown updates
   final StreamController<Duration> _wheelCooldownController = StreamController<Duration>.broadcast();
   final StreamController<Duration> _puzzleCooldownController = StreamController<Duration>.broadcast();
   final StreamController<Duration> _videoCooldownController = StreamController<Duration>.broadcast();
+  final StreamController<Duration> _reflexCooldownController = StreamController<Duration>.broadcast();
 
-  // Getters for streams
   Stream<Duration> get wheelCooldownStream => _wheelCooldownController.stream;
   Stream<Duration> get puzzleCooldownStream => _puzzleCooldownController.stream;
   Stream<Duration> get videoCooldownStream => _videoCooldownController.stream;
+  Stream<Duration> get reflexCooldownStream => _reflexCooldownController.stream;
 
-  // Update cooldown methods
   void updateWheelCooldown(Duration duration) {
     print('Updating wheel cooldown: $duration');
     _wheelCooldownController.add(duration);
@@ -33,7 +31,11 @@ class CooldownManager {
     _videoCooldownController.add(duration);
   }
 
-  // Save cooldown to local storage
+  void updateReflexCooldown(Duration duration) {
+    print('Updating reflex cooldown: $duration');
+    _reflexCooldownController.add(duration);
+  }
+
   Future<void> saveLocalCooldown(String type, Duration duration) async {
     final prefs = await SharedPreferences.getInstance();
     final cooldownEndTime = DateTime.now().add(duration);
@@ -41,7 +43,6 @@ class CooldownManager {
     print('Saved local cooldown for $type: $duration');
   }
 
-  // Load cooldown from local storage
   Future<Duration?> getLocalCooldown(String type) async {
     final prefs = await SharedPreferences.getInstance();
     final lastTimeMillis = prefs.getInt('last${type}Time');
@@ -56,7 +57,7 @@ class CooldownManager {
         return remaining;
       } else {
         print('Local cooldown for $type has expired');
-        // Remove expired cooldown
+
         await prefs.remove('last${type}Time');
       }
     }
@@ -67,5 +68,6 @@ class CooldownManager {
     _wheelCooldownController.close();
     _puzzleCooldownController.close();
     _videoCooldownController.close();
+    _reflexCooldownController.close();
   }
 }

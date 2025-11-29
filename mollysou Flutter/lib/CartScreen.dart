@@ -251,7 +251,7 @@ class _CartScreenState extends State<CartScreen> {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '${price.toStringAsFixed(2)}€',
+                    '${price.toStringAsFixed(2)}DT',
                     style: TextStyle(
                       color: Color(0xFF6A11CB),
                       fontWeight: FontWeight.bold,
@@ -361,7 +361,7 @@ class _CartScreenState extends State<CartScreen> {
                 ),
               ),
               Text(
-                '${totalPrice.toStringAsFixed(2)}€',
+                '${totalPrice.toStringAsFixed(2)}DT',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,

@@ -133,7 +133,6 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
               _videoCompleted = true;
             });
             _saveWatchTime();
-            _showRewardDialog();
           }
         }
       });
@@ -155,64 +154,196 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('lastWatchTime', DateTime.now().millisecondsSinceEpoch);
 
-    // Set cooldown to 3 hours
-    final newCooldown = Duration(hours: 3);
+    // Points et XP pour la vidéo
+    int videoPoints = 300;
 
-    // Update points in database (100 points for watching ad)
+    // Mettre à jour les points et XP dans la base de données
     final userResult = await UserService.getCurrentUser();
     if (userResult['success'] == true) {
       final userId = userResult['userId'];
 
-      // Update points
       try {
-        final pointsResult = await PointsService.addPoints(userId, 100);
+        final pointsResult = await PointsService.addGameRewards(
+          userId: userId,
+          points: videoPoints,
+          gameType: 'video',
+        );
+
         if (pointsResult['success'] == true) {
-          print('Successfully added 100 points from video ad');
+          print('✅ Successfully added $videoPoints points and ${pointsResult['xpAdded']} XP from video ad');
+
+          // FORCE REFRESH OF ALL USER DATA
+          final refreshResult = await UserService.syncUserDataFromDatabase();
+
+          if (refreshResult['success'] == true) {
+            setState(() {
+              final currentUser = refreshResult['user'];
+              userData = {
+                "level": currentUser?['niveau'] ?? 1,
+                "points": currentUser?['points'] ?? 0,
+                "xpActuel": currentUser?['xpActuel'] ?? 0,
+                "xpProchainNiveau": currentUser?['xpProchainNiveau'] ?? 1000,
+                "rank": currentUser?['rank'] ?? "BRONZE",
+                "nomComplet": currentUser?['nomComplet'] ?? "Utilisateur",
+              };
+            });
+            print('🔄 User data refreshed after video: Level ${userData["level"]}, Points ${userData["points"]}');
+          }
 
           if (widget.onPointsEarned != null) {
             widget.onPointsEarned!();
           }
-          // Show level up message if applicable
+
+          // Check for level up
           final newUserData = pointsResult['user'];
           final oldLevel = userData['level'] ?? 1;
           final newLevel = newUserData['niveau'] ?? 1;
 
           if (newLevel > oldLevel) {
             _showLevelUpDialog(newLevel);
+          } else {
+            _showRewardSummary(videoPoints, pointsResult['xpAdded'] ?? 0);
           }
-
-          // Update local user data
-          setState(() {
-            userData = {
-              "level": newUserData['niveau'] ?? 1,
-              "points": newUserData['points'] ?? 0,
-              "xpActuel": newUserData['xpActuel'] ?? 0,
-              "xpProchainNiveau": newUserData['xpProchainNiveau'] ?? 1000,
-              "rank": newUserData['rank'] ?? "BRONZE",
-              "nomComplet": newUserData['nomComplet'] ?? "Utilisateur",
-            };
-          });
         } else {
-          print('Failed to update points: ${pointsResult['error']}');
+          print('❌ Failed to update points: ${pointsResult['error']}');
+          _showErrorSnackbar('Erreur lors de l\'ajout des points');
         }
       } catch (e) {
-        print('Error updating points: $e');
+        print('❌ Error updating points: $e');
+        _showErrorSnackbar('Erreur de connexion');
       }
 
       // Update cooldown
       try {
         await CooldownService.updateCooldown(userId, 'video');
-        print('Video cooldown updated in API');
+        print('✅ Video cooldown updated in API');
       } catch (e) {
-        print('Error updating cooldown in API: $e');
-        await CooldownManager().saveLocalCooldown('Watch', newCooldown);
+        print('❌ Error updating cooldown in API: $e');
+        await CooldownManager().saveLocalCooldown('Watch', Duration(hours: 3));
       }
     } else {
-      await CooldownManager().saveLocalCooldown('Watch', newCooldown);
+      await CooldownManager().saveLocalCooldown('Watch', Duration(hours: 3));
     }
 
     // Notify cooldown manager
-    CooldownManager().updateVideoCooldown(newCooldown);
+    CooldownManager().updateVideoCooldown(Duration(hours: 3));
+  }
+
+  void _showRewardSummary(int points, int xp) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFF6B6B), Color(0xFF6A11CB)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.celebration, color: Colors.white, size: 40),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Récompenses Gagnées !',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Points
+            Container(
+              padding: EdgeInsets.all(12),
+              margin: EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Color(0xFFFFEAA7).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFFFFD700)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.emoji_events, color: Color(0xFFFFD700)),
+                  SizedBox(width: 8),
+                  Text(
+                    '$points Points',
+                    style: TextStyle(
+                      color: Color(0xFFFFD700),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // XP
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Color(0xFF4ECDC4).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Color(0xFF4ECDC4)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.trending_up, color: Color(0xFF4ECDC4)),
+                  SizedBox(width: 8),
+                  Text(
+                    '$xp XP',
+                    style: TextStyle(
+                      color: Color(0xFF4ECDC4),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            SizedBox(height: 16),
+            Text(
+              'Continuez à regarder des publicités pour gagner plus de récompenses !',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFF6A11CB),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              'Super !',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showLevelUpDialog(int newLevel) {
@@ -275,6 +406,15 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
                 ),
               ),
             ),
+            SizedBox(height: 8),
+            Text(
+              'Continuez à jouer pour monter en rang !',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
         actions: [
@@ -293,94 +433,6 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  void _showRewardDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Column(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.card_giftcard, color: Colors.green, size: 30),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'Félicitations !',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Vous avez gagné'),
-              SizedBox(height: 8),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Color(0xFFFFEAA7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.celebration, color: Color(0xFF6A11CB)),
-                    SizedBox(width: 8),
-                    Text(
-                      '100 points',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF6A11CB),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'Prochaine publicité disponible dans 3 heures',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context);
-              },
-              child: Text(
-                'Super !',
-                style: TextStyle(
-                  color: Color(0xFF6A11CB),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -459,7 +511,7 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
 
               // Description
               Text(
-                'Vous pouvez regarder une publicité toutes les 3 heures pour gagner 100 points.',
+                'Vous pouvez regarder une publicité toutes les 3 heures pour gagner 300 points.',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 16,
@@ -592,7 +644,7 @@ class _VideoAdScreenState extends State<VideoAdScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Regardez jusqu\'à la fin pour gagner 100 points',
+                      'Regardez jusqu\'à la fin pour gagner 300 points',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 12,

@@ -4,11 +4,13 @@ public class CooldownDTO {
     private Long wheelCooldown;
     private Long puzzleCooldown;
     private Long videoCooldown;
+    private Long reflexCooldown;
 
-    public CooldownDTO(Long wheelCooldown, Long puzzleCooldown, Long videoCooldown) {
+    public CooldownDTO(Long wheelCooldown, Long puzzleCooldown, Long videoCooldown, Long reflexCooldown) {
         this.wheelCooldown = wheelCooldown;
         this.puzzleCooldown = puzzleCooldown;
         this.videoCooldown = videoCooldown;
+        this.reflexCooldown = reflexCooldown;
     }
 
     public Long getWheelCooldown() {
@@ -23,6 +25,10 @@ public class CooldownDTO {
         return videoCooldown;
     }
 
+    public Long getReflexCooldown() {
+        return reflexCooldown;
+    }
+
     public void setWheelCooldown(Long wheelCooldown) {
         this.wheelCooldown = wheelCooldown;
     }
@@ -34,4 +40,6 @@ public class CooldownDTO {
     public void setVideoCooldown(Long videoCooldown) {
         this.videoCooldown = videoCooldown;
     }
+
+    public void setReflexCooldown(Long reflexCooldown) {this.reflexCooldown = reflexCooldown;}
 }

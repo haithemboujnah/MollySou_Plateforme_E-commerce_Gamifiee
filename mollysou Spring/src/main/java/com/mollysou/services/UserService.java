@@ -45,9 +45,13 @@ public class UserService {
         } else if (level >= 30) {
             return new UserRankInfoDTO("SILVER", "#C0C0C0", "#A9A9A9", "10% discount",
                     new String[]{"#F0F0F0", "#C0C0C0"});
-        } else {
+        } else if (level >= 10) {
             return new UserRankInfoDTO("BRONZE", "#CD7F32", "#8B4513", "5% discount",
                     new String[]{"#DEB887", "#CD7F32"});
+        } else {
+            return new UserRankInfoDTO("UNRANKED","#FFFFFF", "#CCCCCC","0% discount",
+                    new String[]{"#FFFFFF", "#EFEFEF"}
+            );
         }
     }
 
@@ -65,6 +69,9 @@ public class UserService {
             case "video":
                 user.setLastVideoAd(now);
                 break;
+            case "reflex":
+                user.setLastReflexGame(now);
+                break;
         }
 
         userRepository.save(user);
@@ -75,9 +82,10 @@ public class UserService {
         LocalDateTime now = LocalDateTime.now();
 
         return new CooldownDTO(
-                calculateRemainingTime(user.getLastWheelSpin(), now, 24),
+                calculateRemainingTime(user.getLastWheelSpin(), now, 12),
                 calculateRemainingTime(user.getLastPuzzleGame(), now, 1),
-                calculateRemainingTime(user.getLastVideoAd(), now, 3)
+                calculateRemainingTime(user.getLastVideoAd(), now, 3),
+                calculateRemainingTime(user.getLastReflexGame(), now, 1)
         );
     }
 
@@ -106,6 +114,7 @@ public class UserService {
         dto.setLastWheelSpin(user.getLastWheelSpin());
         dto.setLastPuzzleGame(user.getLastPuzzleGame());
         dto.setLastVideoAd(user.getLastVideoAd());
+        dto.setLastReflexGame(user.getLastReflexGame());
         return dto;
     }
 
@@ -169,8 +178,10 @@ public class UserService {
             user.setRank("GOLD");
         } else if (level >= 30) {
             user.setRank("SILVER");
-        } else {
+        } else if (level >= 10){
             user.setRank("BRONZE");
+        } else {
+            user.setRank("UNRANKED");
         }
     }
 
